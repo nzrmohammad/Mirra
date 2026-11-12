@@ -286,11 +286,12 @@ menu_diagnostics() {
         echo "3) Benchmark Iranian Docker mirrors"
         echo "4) Benchmark Global Docker mirrors"
         echo "5) Benchmark Iranian Pip mirrors"
-        echo "6) Run multi-layer network & sanction diagnostics"
+        echo "6) Benchmark all Iranian & Global DNS servers (read-only)"
+        echo "7) Run multi-layer network & sanction diagnostics"
         echo -e "${BRED}0) Back to Main Menu${NC}\n"
 
         local choice=""
-        read_input "Select option [0-6]: " choice "0"
+        read_input "Select option [0-7]: " choice "0"
         case "$choice" in
             1)
                 if [ "$PKG_FAMILY" = "apt" ]; then
@@ -319,7 +320,13 @@ menu_diagnostics() {
             3) benchmark_mirrors DOCKER_IRAN "/v2/" "docker" 0 || true; pause_screen ;;
             4) benchmark_mirrors DOCKER_GLOBAL "/v2/" "docker" 0 || true; pause_screen ;;
             5) benchmark_mirrors PIP_IRAN "" "http" 0 || true; pause_screen ;;
-            6) robust_network_check; pause_screen ;;
+            6)
+                benchmark_dns_list DNS_IRAN || true
+                echo ""
+                benchmark_dns_list DNS_GLOBAL || true
+                pause_screen
+                ;;
+            7) robust_network_check; pause_screen ;;
             0) return ;;
             *) log_err "Invalid option!"; sleep 1 ;;
         esac
@@ -444,8 +451,11 @@ Modes (non-interactive when any action flag is passed):
   --pkg <iran|global>         Benchmark & apply OS package manager mirror
   --docker <iran|global>      Benchmark & apply Docker registry mirrors
   --devtools <iran|global>    Configure Pip/uv, NPM/Yarn/pnpm/Bun, Go, Cargo, Composer
-  --dns <iran|global>           Configure Anti-Sanction (Iran) or Global DNS
-  --dot <cf|quad9|google|off>   Configure DNS-over-TLS via systemd-resolved
+  --dns <iran|global|dhcp>      Configure Anti-Sanction / Global DNS or revert to DHCP
+  --dns-custom <IP1> [IP2]      Apply custom primary (and optional secondary) IPv4 DNS
+  --dns-dhcp                    Revert DNS settings back to automatic DHCP / ISP DNS
+  --flush-dns                   Flush local DNS resolver cache (resolvectl / nscd / nmcli)
+  --dot <cf|quad9|google|adguard|nextdns|off>  Configure DNS-over-TLS via systemd-resolved
   --proxy <URL>                 Set Global HTTP/HTTPS/SOCKS5 proxy
   --docker-proxy <URL|clear>    Set/clear selective proxy ONLY for Docker
   --apt-proxy <URL|clear>       Set/clear selective proxy ONLY for APT
@@ -535,6 +545,24 @@ parse_cli_and_run() {
                 action="dns"
                 action_arg=$(echo "${2:-IRAN}" | tr '[:lower:]' '[:upper:]')
                 [ -n "${2:-}" ] && [[ "${2}" != -* ]] && shift
+                NON_INTERACTIVE=1
+                ;;
+            --dns-custom)
+                action="dns-custom"
+                action_arg="${2:-}"
+                shift || true
+                if [ -n "${2:-}" ] && [[ "${2}" != -* ]]; then
+                    action_arg2="${2}"
+                    shift
+                fi
+                NON_INTERACTIVE=1
+                ;;
+            --dns-dhcp)
+                action="dns-dhcp"
+                NON_INTERACTIVE=1
+                ;;
+            --flush-dns)
+                action="flush-dns"
                 NON_INTERACTIVE=1
                 ;;
             --proxy)
@@ -707,7 +735,23 @@ parse_cli_and_run() {
             ;;
         dns)
             check_root
-            configure_dns_auto "$action_arg"
+            if [ "$action_arg" = "DHCP" ]; then
+                unset_dns_dhcp
+            else
+                configure_dns_auto "$action_arg"
+            fi
+            ;;
+        dns-custom)
+            check_root
+            apply_custom_dns "$action_arg" "$action_arg2"
+            ;;
+        dns-dhcp)
+            check_root
+            unset_dns_dhcp
+            ;;
+        flush-dns)
+            check_root
+            flush_dns_cache
             ;;
         proxy)
             check_root

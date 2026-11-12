@@ -85,6 +85,7 @@ trap 'rm -rf "$TMP_SANDBOX"' EXIT
 
 # Stub privileged system commands so sandboxed unit tests never alter host services or fail as non-root
 systemctl() { return 0; }
+nmcli() { return 1; }
 timedatectl() { return 0; }
 sysctl() { return 0; }
 modprobe() { return 0; }
@@ -267,6 +268,41 @@ assert_contains "$patched_df" "FROM docker.arvancloud.ir/python:3.12-slim AS bas
 assert_contains "$patched_df" "FROM --platform=linux/amd64 docker.arvancloud.ir/node:20-alpine" "Platform FROM rewritten"
 assert_contains "$patched_df" "FROM ghcr.io/org/custom:latest" "Qualified ghcr.io FROM preserved"
 assert_contains "$patched_df" "FROM scratch" "scratch FROM preserved"
+
+resolvectl() { return 0; }
+assert_contains "${DNS_IRAN[*]}" "Shelter|" "DNS_IRAN includes Shelter"
+assert_contains "${DNS_GLOBAL[*]}" "AdGuard|" "DNS_GLOBAL includes AdGuard"
+
+apply_custom_dns "1.1.1.1" "9.9.9.9" >/dev/null
+assert_contains "$(cat "$RESOLVED_DROPIN_FILE")" "DNS=1.1.1.1 9.9.9.9" "Custom IPv4 DNS applied"
+if apply_custom_dns "999.999.1.1" >/dev/null 2>&1; then
+    echo "  [FAIL] Invalid IPv4 should be rejected by apply_custom_dns" >&2
+    FAIL=$((FAIL + 1))
+else
+    echo "  [PASS] Invalid IPv4 rejected cleanly by apply_custom_dns"
+    PASS=$((PASS + 1))
+fi
+
+apply_dns_dot "adguard" >/dev/null
+assert_contains "$(cat "$RESOLVED_DROPIN_FILE")" "dns.adguard-dns.com" "DoT supports AdGuard DNS"
+
+flush_dns_cache >/dev/null
+echo "  [PASS] flush_dns_cache executes cleanly"
+PASS=$((PASS + 1))
+
+unset_dns_dhcp >/dev/null
+if [ ! -f "$RESOLVED_DROPIN_FILE" ]; then
+    echo "  [PASS] unset_dns_dhcp removes Mirra drop-in"
+    PASS=$((PASS + 1))
+else
+    echo "  [FAIL] unset_dns_dhcp did not remove Mirra drop-in" >&2
+    FAIL=$((FAIL + 1))
+fi
+
+help_dns_out=$(bash "$ROOT_DIR/mirra.sh" --help)
+assert_contains "$help_dns_out" "--dns-custom" "--help includes --dns-custom"
+assert_contains "$help_dns_out" "--dns-dhcp" "--help includes --dns-dhcp"
+assert_contains "$help_dns_out" "--flush-dns" "--help includes --flush-dns"
 
 uninst_out=$(bash "$ROOT_DIR/mirra.sh" --uninstall --dry-run --yes --offline 2>&1)
 assert_contains "$uninst_out" "[DRY-RUN]" "CLI --uninstall --dry-run executes cleanly"

@@ -75,9 +75,10 @@ Deploying and maintaining Linux servers behind regional sanctions, flaky upstrea
 - **Node.js**: Unified registry setup across **`npm`**, **`yarn`**, **`pnpm`**, **`bun`** (`~/.bunfig.toml`), and **`NVM_NODEJS_ORG_MIRROR`**.
 - **Systems & Backend Languages**: **Go** (`GOPROXY`), **Rust** (`~/.cargo/config.toml` sparse index + `RUSTUP_DIST_SERVER` / `RUSTUP_UPDATE_ROOT`), **PHP Composer**, **Java** (Maven `~/.m2/settings.xml` + Gradle `init.d/mirra.gradle`), **Ruby** (`gem`/`bundler`), **.NET** (`NuGet.Config`), **Homebrew / Linuxbrew**, and optional **GitHub HTTPS clone proxy** (`git config --global url.*.insteadOf`).
 
-### 🛡️ Anti-Sanction DNS, Selective Proxy & Kernel Tuning
-- **DNS Benchmarking & Injection**: Tests Iranian anti-sanction DNS (**Shecan**, **403.online**, **Begzar**, **Radar**, **Electro**, **Shatel**) and Global DNS (**Cloudflare**, **Google**, **Quad9**) against actual `registry-1.docker.io` resolution + HTTP bypass verification.
-- **DNS-over-TLS (`--dot`)**: Configures encrypted `DNSOverTLS=yes` drop-ins via `systemd-resolved`.
+### 🛡️ Anti-Sanction DNS, NetworkManager, DoT/DoH, Selective Proxy & Kernel Tuning
+- **DNS Benchmarking & Injection**: Tests **12** Iranian anti-sanction & gaming DNS profiles (**Shecan**, **403.online**, **Begzar**, **Radar**, **Electro / Alt**, **Shatel**, **Shelter**, **Beshkan**, **HostIran**, **Vanilla**, **DNSPro**) and **22** Global security/privacy/edge DNS profiles (**Cloudflare**, **Google**, **Quad9**, **OpenDNS / FamilyShield**, **AdGuard**, **NextDNS**, **Control D**, **Mullvad**, **CleanBrowsing**, **UncensoredDNS**, **DNS.WATCH**, **Comodo**, **Quad101**, **Verisign**, **Gcore**, **Yandex**) against actual `registry-1.docker.io` resolution + HTTP bypass verification.
+- **Multi-Backend Linux DNS (`systemd-resolved` / `nmcli` / `resolv.conf`)**: Applies presets or `--dns-custom <IP1> [IP2]` via `systemd-resolved` drop-ins, **NetworkManager (`nmcli`)**, or `/etc/resolv.conf`, supports reverting to automatic DHCP (`--dns-dhcp`), displays active interfaces / `resolvectl dns`, and flushes local resolver caches (`--flush-dns`).
+- **DNS-over-TLS (`--dot`) & DoH Guide**: Configures encrypted `DNSOverTLS=yes` drop-ins for Cloudflare, Quad9, Google, AdGuard, and NextDNS, plus includes a built-in DoH endpoint reference.
 - **Global & Selective Proxy Routing**: Apply HTTP/HTTPS/SOCKS5 proxies across the entire system **or selectively only to Docker (`--docker-proxy`) or APT (`--apt-proxy`)** (ideal for local Cloudflare WARP `socks5://127.0.0.1:40000`).
 - **Network Stack Hardening**: One-command IPv6 toggle + `Acquire::ForceIPv4`, **TCP BBR** (`fq` + `bbr`), automated Path **MTU probing**, and **NTP clock sync + CA certificate refresh**.
 
@@ -371,8 +372,11 @@ mirra --diagnostics --json
 | `--pkg` | `<iran \| global>` | `iran` | Benchmark and apply OS package manager mirror (`apt`, `apk`, `dnf`, `pacman`). |
 | `--docker` | `<iran \| global>` | `iran` | Benchmark and safely merge Docker `registry-mirrors` into `/etc/docker/daemon.json`. |
 | `--devtools` | `<iran \| global>` | `iran` | Configure Pip/uv, NPM/Yarn/pnpm/Bun, Go, Cargo/Rustup, Composer, Conda & Java. |
-| `--dns` | `<iran \| global>` | `iran` | Apply Anti-Sanction Iranian DNS or Global DNS via `systemd-resolved` / `resolv.conf`. |
-| `--dot` | `<cf \| quad9 \| google \| off>` | `cloudflare` | Configure DNS-over-TLS (`DNSOverTLS=yes`) via `systemd-resolved`. |
+| `--dns` | `<iran \| global \| dhcp>` | `iran` | Apply Anti-Sanction Iranian DNS, Global DNS, or revert to DHCP (`systemd-resolved` / `nmcli` / `resolv.conf`). |
+| `--dns-custom` | `<IP1> [IP2]` | — | Validate and apply custom IPv4 primary (and optional secondary) DNS servers. |
+| `--dns-dhcp` | — | — | Remove Mirra DNS overrides and revert NetworkManager / `systemd-resolved` to automatic DHCP DNS. |
+| `--flush-dns` | — | — | Flush local DNS resolver cache (`resolvectl`, `systemd-resolve`, `nscd`, `nmcli`). |
+| `--dot` | `<cf \| quad9 \| google \| adguard \| nextdns \| off>` | `cloudflare` | Configure DNS-over-TLS (`DNSOverTLS=yes`) via `systemd-resolved`. |
 | `--proxy` | `<URL>` | — | Set Global HTTP/HTTPS/SOCKS5 proxy across `/etc/profile.d/`, APT, Docker & Git. |
 | `--docker-proxy` | `<URL \| clear>` | — | Set or clear a selective proxy **only** for Docker (e.g., `socks5://127.0.0.1:40000`). |
 | `--apt-proxy` | `<URL \| clear>` | — | Set or clear a selective proxy **only** for APT. |

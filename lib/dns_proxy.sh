@@ -101,10 +101,10 @@ benchmark_dns_list() {
         local d2="${rest#*|}"
 
         if [ "$ms" -lt 9999 ] 2>/dev/null; then
-            echo -e "  • ${BOLD}${name}${NC} (${d1}, ${d2}) ... ${GREEN}${ms} ms${NC} ${GRAY}[${status}]${NC}"
+            echo -e "  • ${BOLD}${name}${NC} (${d1}${d2:+, ${d2}}) ... ${GREEN}${ms} ms${NC} ${GRAY}[${status}]${NC}"
             ok_lines+=("$line")
         else
-            echo -e "  • ${BOLD}${name}${NC} (${d1}, ${d2}) ... ${RED}Unreachable${NC}"
+            echo -e "  • ${BOLD}${name}${NC} (${d1}${d2:+, ${d2}}) ... ${RED}Unreachable${NC}"
         fi
     done
 
@@ -116,10 +116,57 @@ benchmark_dns_list() {
     return 0
 }
 
+_is_valid_ipv4() {
+    local ip="$1"
+    if [[ ! "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        return 1
+    fi
+    local o1 o2 o3 o4 oct
+    IFS='.' read -r o1 o2 o3 o4 <<< "$ip"
+    for oct in "$o1" "$o2" "$o3" "$o4"; do
+        if [ "$oct" -lt 0 ] || [ "$oct" -gt 255 ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+_write_resolv_conf() {
+    local name="$1"
+    local dns1="$2"
+    local dns2="${3:-}"
+    local dns_pair="$dns1"
+    [ -n "$dns2" ] && dns_pair="${dns1} ${dns2}"
+
+    backup_file "/etc/resolv.conf"
+    local content
+    content="# Configured by Mirra (${name})"$'\n'"nameserver ${dns1}"
+    [ -n "$dns2" ] && content+=$'\n'"nameserver ${dns2}"
+    if [ "$DRY_RUN" -eq 0 ] && [ -L /etc/resolv.conf ]; then
+        rm -f /etc/resolv.conf
+    fi
+    write_file_safe "/etc/resolv.conf" "$content"
+    log_ok "Applied DNS (${name}: ${dns_pair}) to /etc/resolv.conf."
+}
+
+_detect_active_nm_connection() {
+    if ! command -v nmcli >/dev/null 2>&1; then
+        return 0
+    fi
+    if ! systemctl is-active --quiet NetworkManager 2>/dev/null; then
+        return 0
+    fi
+    nmcli -t -f NAME,TYPE connection show --active 2>/dev/null \
+        | awk -F: '$2 != "loopback" && $2 != "bridge" {print $1; exit}' || true
+}
+
 apply_dns_servers() {
     local name="$1"
     local dns1="$2"
-    local dns2="$3"
+    local dns2="${3:-}"
+    local target_conn="${4:-}"
+    local dns_pair="$dns1"
+    [ -n "$dns2" ] && dns_pair="${dns1} ${dns2}"
 
     if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved 2>/dev/null; then
         backup_file "$RESOLVED_DROPIN_FILE"
@@ -127,14 +174,14 @@ apply_dns_servers() {
         content=$(cat <<EOF
 # Configured by Mirra (${name})
 [Resolve]
-DNS=${dns1} ${dns2}
+DNS=${dns_pair}
 FallbackDNS=1.1.1.1 8.8.8.8
 EOF
 )
         write_file_safe "$RESOLVED_DROPIN_FILE" "$content"
         if [ "$DRY_RUN" -eq 0 ] && [ "$EUID" -eq 0 ]; then
             if systemctl restart systemd-resolved 2>/dev/null; then
-                log_ok "Applied DNS (${name}: ${dns1}, ${dns2}) via systemd-resolved."
+                log_ok "Applied DNS (${name}: ${dns_pair}) via systemd-resolved."
             else
                 log_warn "Wrote ${RESOLVED_DROPIN_FILE}, but could not restart systemd-resolved."
             fi
@@ -143,21 +190,41 @@ EOF
         else
             log_dry "Would restart systemd-resolved"
         fi
-    else
-        backup_file "/etc/resolv.conf"
-        local content
-        content=$(cat <<EOF
-# Configured by Mirra (${name})
-nameserver ${dns1}
-nameserver ${dns2}
-EOF
-)
-        if [ "$DRY_RUN" -eq 0 ] && [ -L /etc/resolv.conf ]; then
-            rm -f /etc/resolv.conf
+    elif command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+        local conn="${target_conn:-$(_detect_active_nm_connection)}"
+        if [ -z "$conn" ]; then
+            log_warn "No active NetworkManager connection found; falling back to /etc/resolv.conf."
+        else
+            if [ "$DRY_RUN" -eq 1 ]; then
+                log_dry "Would run: nmcli connection modify \"${conn}\" ipv4.dns \"${dns_pair}\" ipv4.ignore-auto-dns yes && nmcli connection up \"${conn}\""
+                return 0
+            fi
+            if nmcli connection modify "$conn" ipv4.dns "$dns_pair" ipv4.ignore-auto-dns yes 2>/dev/null \
+                && nmcli connection up "$conn" >/dev/null 2>&1; then
+                log_ok "Applied DNS (${name}: ${dns_pair}) on NetworkManager connection '${conn}'."
+                return 0
+            fi
+            log_warn "nmcli apply failed on '${conn}'; falling back to /etc/resolv.conf."
         fi
-        write_file_safe "/etc/resolv.conf" "$content"
-        log_ok "Applied DNS (${name}: ${dns1}, ${dns2}) to /etc/resolv.conf."
+        _write_resolv_conf "$name" "$dns1" "$dns2"
+    else
+        _write_resolv_conf "$name" "$dns1" "$dns2"
     fi
+}
+
+apply_custom_dns() {
+    local dns1="${1:-}"
+    local dns2="${2:-}"
+    local conn="${3:-}"
+    if [ -z "$dns1" ] || ! _is_valid_ipv4 "$dns1"; then
+        log_err "Invalid primary IPv4 DNS address: '${dns1}'"
+        return 1
+    fi
+    if [ -n "$dns2" ] && ! _is_valid_ipv4 "$dns2"; then
+        log_err "Invalid secondary IPv4 DNS address: '${dns2}'"
+        return 1
+    fi
+    apply_dns_servers "Custom" "$dns1" "$dns2" "$conn"
 }
 
 restore_dns_config() {
@@ -171,6 +238,84 @@ restore_dns_config() {
         fi
     fi
     restore_from_manifest "resolv.conf" || true
+}
+
+unset_dns_dhcp() {
+    local target_conn="${1:-}"
+    local did_work=0
+
+    if [ -f "$RESOLVED_DROPIN_FILE" ]; then
+        if [ "$DRY_RUN" -eq 1 ]; then
+            log_dry "Would remove ${RESOLVED_DROPIN_FILE} to revert systemd-resolved to DHCP"
+        else
+            rm -f "$RESOLVED_DROPIN_FILE"
+            systemctl restart systemd-resolved 2>/dev/null || true
+            log_ok "Removed Mirra systemd-resolved drop-in (reverted to DHCP/ISP DNS)."
+        fi
+        did_work=1
+    fi
+
+    if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+        local conn="${target_conn:-$(_detect_active_nm_connection)}"
+        if [ -n "$conn" ]; then
+            if [ "$DRY_RUN" -eq 1 ]; then
+                log_dry "Would run: nmcli connection modify \"${conn}\" ipv4.dns \"\" ipv4.ignore-auto-dns no && nmcli connection up \"${conn}\""
+            else
+                if nmcli connection modify "$conn" ipv4.dns "" ipv4.ignore-auto-dns no 2>/dev/null; then
+                    nmcli connection up "$conn" >/dev/null 2>&1 || true
+                    log_ok "Reverted NetworkManager connection '${conn}' to automatic DHCP DNS."
+                fi
+            fi
+            did_work=1
+        fi
+    fi
+
+    if [ "$did_work" -eq 0 ]; then
+        restore_from_manifest "resolv.conf" || log_info "No Mirra DNS overrides active; DHCP/system defaults remain intact."
+    fi
+}
+
+flush_dns_cache() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log_dry "Would flush local DNS resolver caches (resolvectl / systemd-resolve / nscd / nmcli)"
+        return 0
+    fi
+    local flushed=0
+    if command -v resolvectl >/dev/null 2>&1; then
+        resolvectl flush-caches 2>/dev/null && flushed=1 || true
+    elif command -v systemd-resolve >/dev/null 2>&1; then
+        systemd-resolve --flush-caches 2>/dev/null && flushed=1 || true
+    fi
+    if command -v nscd >/dev/null 2>&1; then
+        nscd -i hosts 2>/dev/null && flushed=1 || true
+    fi
+    if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+        nmcli general reload 2>/dev/null && flushed=1 || true
+    fi
+    if [ "$flushed" -eq 1 ]; then
+        log_ok "System DNS cache flushed cleanly."
+    else
+        log_info "No local DNS caching daemon detected (nothing cached locally to flush)."
+    fi
+}
+
+show_dns_overview() {
+    echo -e "\n${BLUE}--- Active Interfaces ---${NC}"
+    if command -v nmcli >/dev/null 2>&1; then
+        nmcli -f DEVICE,TYPE,STATE,CONNECTION dev status 2>/dev/null || true
+    elif command -v ip >/dev/null 2>&1; then
+        ip -brief addr 2>/dev/null || true
+    fi
+    if command -v resolvectl >/dev/null 2>&1; then
+        echo -e "\n${BLUE}--- resolvectl dns ---${NC}"
+        resolvectl dns 2>/dev/null || true
+    fi
+    echo -e "\n${BLUE}--- /etc/resolv.conf ---${NC}"
+    cat /etc/resolv.conf 2>/dev/null || true
+    if [ -f "$RESOLVED_DROPIN_FILE" ]; then
+        echo -e "\n${BLUE}--- ${RESOLVED_DROPIN_FILE} ---${NC}"
+        cat "$RESOLVED_DROPIN_FILE"
+    fi
 }
 
 configure_dns_auto() {
@@ -362,8 +507,16 @@ apply_dns_dot() {
             label="Google DoT"
             dns_line="8.8.8.8#dns.google 8.8.4.4#dns.google"
             ;;
+        adguard)
+            label="AdGuard DoT"
+            dns_line="94.140.14.14#dns.adguard-dns.com 94.140.15.15#dns.adguard-dns.com"
+            ;;
+        nextdns)
+            label="NextDNS DoT"
+            dns_line="45.90.28.0#dns.nextdns.io 45.90.30.0#dns.nextdns.io"
+            ;;
         *)
-            log_err "Unsupported DoT provider: ${provider}. Use cloudflare, quad9, google, or off."
+            log_err "Unsupported DoT provider: ${provider}. Use cloudflare, quad9, google, adguard, nextdns, or off."
             return 1
             ;;
     esac
@@ -390,6 +543,17 @@ EOF
             log_info "Note: DNS-over-TLS requires systemd-resolved (or a DoH client like dnscrypt-proxy)."
         fi
     fi
+}
+
+show_doh_guide() {
+    echo -e "\n${YELLOW}[ DNS-over-HTTPS (DoH) & DoT Quick Reference ]${NC}\n"
+    echo -e "  ${BOLD}Cloudflare:${NC}  DoH: https://cloudflare-dns.com/dns-query   | DoT: one.one.one.one"
+    echo -e "  ${BOLD}Google:${NC}      DoH: https://dns.google/dns-query           | DoT: dns.google"
+    echo -e "  ${BOLD}Quad9:${NC}       DoH: https://dns.quad9.net/dns-query        | DoT: dns.quad9.net"
+    echo -e "  ${BOLD}AdGuard:${NC}     DoH: https://dns.adguard-dns.com/dns-query  | DoT: dns.adguard-dns.com"
+    echo -e "  ${BOLD}NextDNS:${NC}     DoH: https://dns.nextdns.io                 | DoT: dns.nextdns.io"
+    echo -e "\n  ${CYAN}Browser Setup:${NC} Chrome/Edge/Firefox -> Settings -> Security -> Use Secure DNS -> Paste DoH URL above."
+    echo -e "  ${CYAN}Linux DoH Client:${NC} Install 'cloudflared proxy-dns' or 'dnscrypt-proxy' and point /etc/resolv.conf to 127.0.0.1."
 }
 
 apply_apt_proxy_only() {
@@ -506,22 +670,23 @@ EOF
 menu_dns_proxy() {
     while true; do
         print_banner
-        echo -e "${YELLOW}[ Section 4: DNS, DoT, Selective Proxy, BBR, IPv6 & MTU ]${NC}\n"
-        echo "1) Benchmark & apply Iranian Anti-Sanction DNS (Shecan, 403, Begzar, Radar, Electro)"
-        echo "2) Apply Global DNS (Cloudflare, Google, Quad9)"
-        echo "3) Enable DNS-over-TLS (DoT via systemd-resolved)"
-        echo "4) View / Restore DNS configuration"
-        echo "5) Set Global Proxy (Shell, APT, Docker, Git)"
-        echo "6) Set Selective Proxy ONLY for Docker or APT (e.g. WARP socks5://127.0.0.1:40000)"
-        echo "7) Clear all Proxy configurations"
-        echo "8) IPv6 Toggle (Disable IPv6 / Force APT IPv4 or Re-enable)"
-        echo "9) Path MTU Optimizer (Auto-detect & apply optimal MTU)"
-        echo "10) Enable / Disable TCP BBR Congestion Control"
-        echo "11) Sync Server Clock (NTP) & Refresh CA Certificates"
+        echo -e "${YELLOW}[ Section 4: DNS, DoT/DoH, NetworkManager, Proxy, BBR, IPv6 & MTU ]${NC}\n"
+        echo "1) Benchmark & apply Iranian Anti-Sanction DNS (Shecan, 403, Begzar, Radar, Shelter...)"
+        echo "2) Benchmark & apply Global DNS (Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS...)"
+        echo "3) Set Custom DNS (Manual IPv4 + optional NetworkManager connection)"
+        echo "4) Enable DNS-over-TLS (DoT) & View DoH Guide"
+        echo "5) View Active Interfaces/DNS, Restore, Revert to DHCP or Flush DNS Cache"
+        echo "6) Set Global Proxy (Shell, APT, Docker, Git)"
+        echo "7) Set Selective Proxy ONLY for Docker or APT (e.g. WARP socks5://127.0.0.1:40000)"
+        echo "8) Clear all Proxy configurations"
+        echo "9) IPv6 Toggle (Disable IPv6 / Force APT IPv4 or Re-enable)"
+        echo "10) Path MTU Optimizer (Auto-detect & apply optimal MTU)"
+        echo "11) Enable / Disable TCP BBR Congestion Control"
+        echo "12) Sync Server Clock (NTP) & Refresh CA Certificates"
         echo -e "${BRED}0) Back to Main Menu${NC}\n"
 
         local choice=""
-        read_input "Select option [0-11]: " choice "0"
+        read_input "Select option [0-12]: " choice "0"
         case "$choice" in
             1|2)
                 local arr_name="DNS_IRAN"
@@ -531,7 +696,7 @@ menu_dns_proxy() {
                     local i
                     for i in "${!DNS_SORTED[@]}"; do
                         IFS='|' read -r ms status name d1 d2 <<< "${DNS_SORTED[$i]}"
-                        echo -e "  ${CYAN}$((i + 1)))${NC} ${BOLD}${name}${NC} (${d1}, ${d2}) ${GREEN}(${ms} ms)${NC} [${status}]"
+                        echo -e "  ${CYAN}$((i + 1)))${NC} ${BOLD}${name}${NC} (${d1}${d2:+, ${d2}}) ${GREEN}(${ms} ms)${NC} [${status}]"
                     done
                     echo -e "  ${BRED}0) Cancel${NC}\n"
                     local dc=""
@@ -546,37 +711,51 @@ menu_dns_proxy() {
                 pause_screen
                 ;;
             3)
-                echo "1) Cloudflare DoT  2) Quad9 DoT  3) Google DoT  4) Disable DoT"
+                local c1="" c2="" c_nm=""
+                read_input "Primary IPv4 DNS (e.g. 178.22.122.100): " c1 ""
+                read_input "Secondary IPv4 DNS [optional]: " c2 ""
+                if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+                    local def_conn
+                    def_conn=$(_detect_active_nm_connection)
+                    read_input "NetworkManager connection [${def_conn:-auto}]: " c_nm "$def_conn"
+                fi
+                apply_custom_dns "$c1" "$c2" "$c_nm" || true
+                pause_screen
+                ;;
+            4)
+                echo "1) Cloudflare DoT  2) Quad9 DoT  3) Google DoT  4) AdGuard DoT  5) NextDNS DoT  6) Disable DoT  7) Show DoH Guide"
                 local dtc=""
-                read_input "Select [1-4]: " dtc "0"
+                read_input "Select [1-7]: " dtc "0"
                 case "$dtc" in
                     1) apply_dns_dot "cloudflare" ;;
                     2) apply_dns_dot "quad9" ;;
                     3) apply_dns_dot "google" ;;
-                    4) apply_dns_dot "off" ;;
+                    4) apply_dns_dot "adguard" ;;
+                    5) apply_dns_dot "nextdns" ;;
+                    6) apply_dns_dot "off" ;;
+                    7) show_doh_guide ;;
                 esac
                 pause_screen
                 ;;
-            4)
-                echo "1) View DNS config  2) Restore original DNS"
+            5)
+                echo "1) View Active Interfaces & DNS  2) Restore DNS backup  3) Revert to DHCP DNS  4) Flush DNS Cache"
                 local vc=""
-                read_input "Select [1-2]: " vc "1"
-                if [ "$vc" = "1" ]; then
-                    echo -e "\n${BLUE}--- /etc/resolv.conf ---${NC}"
-                    cat /etc/resolv.conf 2>/dev/null || true
-                    [ -f "$RESOLVED_DROPIN_FILE" ] && echo -e "\n${BLUE}--- ${RESOLVED_DROPIN_FILE} ---${NC}" && cat "$RESOLVED_DROPIN_FILE"
-                elif [ "$vc" = "2" ]; then
-                    restore_dns_config
-                fi
+                read_input "Select [1-4]: " vc "1"
+                case "$vc" in
+                    1) show_dns_overview ;;
+                    2) restore_dns_config ;;
+                    3) unset_dns_dhcp ;;
+                    4) flush_dns_cache ;;
+                esac
                 pause_screen
                 ;;
-            5)
+            6)
                 local purl=""
                 read_input "Enter proxy URL (e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080): " purl ""
                 [ -n "$purl" ] && apply_system_proxy "$purl"
                 pause_screen
                 ;;
-            6)
+            7)
                 echo "1) Docker-only proxy  2) APT-only proxy  3) Clear Docker proxy  4) Clear APT proxy"
                 local spc=""
                 read_input "Select [1-4]: " spc "0"
@@ -588,8 +767,8 @@ menu_dns_proxy() {
                 esac
                 pause_screen
                 ;;
-            7) clear_system_proxy; pause_screen ;;
-            8)
+            8) clear_system_proxy; pause_screen ;;
+            9)
                 echo "1) Disable IPv6 & Force APT IPv4  2) Re-enable IPv6"
                 local vc=""
                 read_input "Select [1-2]: " vc "0"
@@ -597,13 +776,13 @@ menu_dns_proxy() {
                 [ "$vc" = "2" ] && apply_ipv6_state "enable"
                 pause_screen
                 ;;
-            9)
+            10)
                 local mtu_in=""
                 read_input "Enter MTU or 'auto' to probe [auto]: " mtu_in "auto"
                 optimize_mtu "${mtu_in:-auto}"
                 pause_screen
                 ;;
-            10)
+            11)
                 echo "1) Enable TCP BBR  2) Disable TCP BBR"
                 local bc=""
                 read_input "Select [1-2]: " bc "0"
@@ -611,7 +790,7 @@ menu_dns_proxy() {
                 [ "$bc" = "2" ] && apply_bbr_state "disable"
                 pause_screen
                 ;;
-            11) sync_server_time; pause_screen ;;
+            12) sync_server_time; pause_screen ;;
             0) return ;;
             *) log_err "Invalid option!"; sleep 1 ;;
         esac
