@@ -1,0 +1,9 @@
+.vs/
+*.suo
+*.user
+*.userossc
+*.slnx.sqlite
+*.bak_mirra
+mirra-profile.json
+.DS_Store
+Thumbs.db

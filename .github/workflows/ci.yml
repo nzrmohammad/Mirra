@@ -1,0 +1,52 @@
+name: Mirra CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate mirrors.json syntax
+        run: jq empty mirrors.json
+
+      - name: Run ShellCheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          fi
+          shellcheck -x -S warning mirra.sh lib/*.sh tests/*.sh
+
+      - name: Run unit & syntax tests
+        run: |
+          chmod +x mirra.sh lib/*.sh tests/test_mirra.sh
+          ./tests/test_mirra.sh
+
+  distro-dry-run:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:12
+          - alpine:3.20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test Mirra dry-run inside ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD:/app" -w /app "${{ matrix.image }}" sh -c '
+            if command -v apk >/dev/null 2>&1; then
+              apk add --no-cache bash curl gawk >/dev/null
+            else
+              apt-get update -qq && apt-get install -y -qq bash curl gawk >/dev/null
+            fi
+            bash mirra.sh --status --offline
+            bash mirra.sh --auto global --dry-run --yes --offline
+          '

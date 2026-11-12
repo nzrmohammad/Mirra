@@ -1,0 +1,37 @@
+name: Mirror Health Check
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+
+jobs:
+  check-mirrors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe Global & Reachable Mirrors in mirrors.json
+        run: |
+          python3 - <<'PYEOF'
+          import json, urllib.request
+
+          with open("mirrors.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          for key in ["apt_ubuntu_global", "apt_debian_global", "alpine_global", "docker_global", "pip_global", "npm_global"]:
+              print(f"=== {key} ===")
+              for url in data.get(key, []):
+                  probe = url.rstrip("/") + ("/v2/" if "docker" in key else "/")
+                  try:
+                      req = urllib.request.Request(probe, method="HEAD", headers={"User-Agent": "Mirra-Health/2.0"})
+                      with urllib.request.urlopen(req, timeout=5) as resp:
+                          print(f"  [OK {resp.status}] {url}")
+                  except urllib.error.HTTPError as e:
+                      if e.code == 401 and "docker" in key:
+                          print(f"  [OK 401] {url}")
+                      else:
+                          print(f"  [WARN {e.code}] {url}")
+                  except Exception as e:
+                      print(f"  [FAIL] {url} -> {e}")
+          PYEOF

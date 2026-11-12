@@ -1,0 +1,173 @@
+{
+  "version": "2.0.0",
+  "apt_ubuntu_iran": [
+    "http://mirror.arvancloud.ir/ubuntu/",
+    "http://ir.archive.ubuntu.com/ubuntu/",
+    "http://ubuntu.internet.ir/ubuntu/",
+    "http://mirrors.piconet.ir/ubuntu/",
+    "http://mirror.iut.ac.ir/ubuntu/",
+    "http://mirrors.asis.ai/ubuntu/",
+    "http://ubuntu.hostiran.ir/ubuntu/",
+    "http://mirror.rasana.io/ubuntu/",
+    "http://mirror.ut.ac.ir/ubuntu/",
+    "http://mirror.sharif.ir/ubuntu/",
+    "http://mirror.yazd.ac.ir/ubuntu/",
+    "http://mirror.iauctb.ac.ir/ubuntu/",
+    "http://mirror.shirazu.ac.ir/ubuntu/",
+    "http://mirrors.shirazu.ac.ir/ubuntu/",
+    "http://mirror.parsdev.net/ubuntu/",
+    "http://mirror.fardasrv.ir/ubuntu/",
+    "http://mirror.liara.ir/ubuntu/",
+    "http://mirror.fanap.ir/ubuntu/",
+    "http://mirrors.vandar.ir/ubuntu/",
+    "http://mirror.zarrinpal.com/ubuntu/",
+    "http://mirrors.snapp.ir/ubuntu/",
+    "http://mirror.isrg.ir/ubuntu/",
+    "http://mirrors.tda.ir/ubuntu/",
+    "http://mirror-ubuntu.runflare.com/ubuntu/"
+  ],
+  "apt_ubuntu_global": [
+    "http://archive.ubuntu.com/ubuntu/",
+    "http://us.archive.ubuntu.com/ubuntu/",
+    "http://uk.archive.ubuntu.com/ubuntu/",
+    "http://de.archive.ubuntu.com/ubuntu/",
+    "http://fr.archive.ubuntu.com/ubuntu/"
+  ],
+  "apt_ubuntu_ports": [
+    "http://ports.ubuntu.com/ubuntu-ports/",
+    "http://mirror.arvancloud.ir/ubuntu-ports/"
+  ],
+  "apt_debian_iran": [
+    "http://mirror.arvancloud.ir/debian/",
+    "http://debian.asis.ai/debian/",
+    "http://mirror.iut.ac.ir/debian/",
+    "http://mirror.ut.ac.ir/debian/",
+    "http://mirror.sharif.ir/debian/",
+    "http://mirror.liara.ir/debian/",
+    "http://mirrors.piconet.ir/debian/",
+    "http://mirror.hostiran.ir/debian/"
+  ],
+  "apt_debian_global": [
+    "http://deb.debian.org/debian/",
+    "http://ftp.us.debian.org/debian/",
+    "http://ftp.de.debian.org/debian/",
+    "http://ftp.uk.debian.org/debian/"
+  ],
+  "alpine_iran": [
+    "https://mirror.arvancloud.ir/alpine/",
+    "https://mirror.liara.ir/alpine/"
+  ],
+  "alpine_global": [
+    "https://dl-cdn.alpinelinux.org/alpine/",
+    "https://mirror.leaseweb.com/alpine/"
+  ],
+  "arch_iran": [
+    "https://mirror.arvancloud.ir/archlinux/",
+    "https://mirror.ut.ac.ir/archlinux/"
+  ],
+  "arch_global": [
+    "https://geo.mirror.pkgbuild.com/",
+    "https://mirror.rackspace.com/archlinux/"
+  ],
+  "docker_iran": [
+    "https://docker.arvancloud.ir",
+    "https://docker.mobinhost.com",
+    "https://docker.kernel.ir",
+    "https://docker.iranrepo.ir",
+    "https://docker.iranserver.com",
+    "https://docker.parspack.com",
+    "https://dockerhub.ir",
+    "https://docker.sotoon.ir",
+    "https://docker.derak.cloud",
+    "https://docker.chapaar.ir",
+    "https://docker.mshd.ir",
+    "https://registry.docker.ir",
+    "https://docker.hub.ir",
+    "https://docker.abrvan.com",
+    "https://docker.fardasrv.ir",
+    "https://docker.liara.ir",
+    "https://registry.podspace.ir",
+    "https://docker.hafez.io",
+    "https://docker.roshan.ai",
+    "https://docker.snapp.ir",
+    "https://mirror-docker.runflare.com"
+  ],
+  "docker_global": [
+    "https://registry-1.docker.io",
+    "https://mirror.gcr.io",
+    "https://public.ecr.aws"
+  ],
+  "pip_iran": [
+    "https://mirror-pypi.runflare.com/simple/",
+    "https://pypi.iranrepo.ir/simple/",
+    "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/",
+    "https://mirrors.aliyun.com/pypi/simple/"
+  ],
+  "pip_global": [
+    "https://pypi.org/simple/"
+  ],
+  "npm_iran": [
+    "https://registry.npmmirror.com/",
+    "https://mirrors.cloud.tencent.com/npm/"
+  ],
+  "npm_global": [
+    "https://registry.npmjs.org/"
+  ],
+  "go_iran": [
+    "https://goproxy.cn,direct",
+    "https://goproxy.io,direct"
+  ],
+  "go_global": [
+    "https://proxy.golang.org,direct"
+  ],
+  "cargo_iran": [
+    "https://rsproxy.cn/crates.io-index",
+    "https://mirrors.ustc.edu.cn/crates.io-index/"
+  ],
+  "composer_iran": [
+    "https://mirrors.aliyun.com/composer/"
+  ],
+  "maven_iran": [
+    "https://maven.aliyun.com/repository/public"
+  ],
+  "nvm_iran": [
+    "https://npmmirror.com/mirrors/node/"
+  ],
+  "rustup_iran": [
+    "https://rsproxy.cn|https://rsproxy.cn/rustup"
+  ],
+  "conda_iran": [
+    "https://mirrors.tuna.tsinghua.edu.cn/anaconda"
+  ],
+  "ruby_iran": [
+    "https://gems.ruby-china.com/",
+    "https://mirrors.tuna.tsinghua.edu.cn/rubygems/"
+  ],
+  "nuget_iran": [
+    "https://nuget.cdn.azure.cn/v3/index.json"
+  ],
+  "brew_iran": [
+    "https://mirrors.tuna.tsinghua.edu.cn"
+  ],
+  "dnf_iran": [
+    "https://mirror.arvancloud.ir",
+    "https://mirrors.aliyun.com"
+  ],
+  "github_proxies": [
+    "https://ghfast.top/",
+    "https://mirror.ghproxy.com/"
+  ],
+  "dns_iran": [
+    "Shecan|178.22.122.100|185.51.200.2",
+    "403.online|10.202.10.202|10.202.10.102",
+    "Begzar|185.55.226.26|185.55.225.25",
+    "Radar|10.202.10.10|10.202.10.11",
+    "Electro|78.157.42.100|78.157.42.101",
+    "Shatel|85.15.1.14|85.15.1.15"
+  ],
+  "dns_global": [
+    "Cloudflare|1.1.1.1|1.0.0.1",
+    "Google|8.8.8.8|8.8.4.4",
+    "Quad9|9.9.9.9|149.112.112.112"
+  ]
+}
